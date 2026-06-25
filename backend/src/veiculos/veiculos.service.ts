@@ -1,4 +1,4 @@
-import { Injectable, ConflictException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateVeiculoDto } from './dto/create-veiculo.dto';
 
@@ -27,5 +27,21 @@ export class VeiculosService {
       where: { status: 'ATIVO' },
       orderBy: { prefixo: 'asc' },
     });
+  }
+
+  async remove(id: string) {
+    const veiculo = await this.prisma.veiculo.findUnique({
+      where: { id },
+    });
+    if (!veiculo) {
+      throw new NotFoundException('Veículo não encontrado.');
+    }
+
+    await this.prisma.veiculo.update({
+      where: { id },
+      data: { status: 'INATIVO' },
+    });
+
+    return { message: 'Veículo inativado com sucesso.' };
   }
 }

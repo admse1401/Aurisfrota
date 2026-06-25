@@ -12,12 +12,12 @@ export interface Motorista {
 
 export interface Veiculo {
   id: string;
-  frota: string; // ex: "F-100"
-  placa: string; // ex: "ABC-1234"
+  frota: string;
+  placa: string;
 }
 
 export interface Dispositivo {
-  veiculoId: string; // Configuração local única vinculando o dispositivo a um veículo
+  veiculoId: string;
 }
 
 export type EventoTipo = 'ENTRADA' | 'SAIDA';
@@ -30,8 +30,8 @@ export interface Evento {
   nomeMotorista: string;
   frota: string;
   placa: string;
-  data: string; // "AAAA-MM-DD"
-  hora: string; // "HH:MM:SS" ou "HH:MM"
+  data: string;
+  hora: string;
   timestamp: number;
   tipo: EventoTipo;
   kmInicial?: number;
@@ -43,12 +43,11 @@ export interface Evento {
 
 export interface Log {
   id: string;
-  eventoId?: string; // Opcional, para logs de eventos
-  usuario?: string; // Opcional, para logs de ações de usuário
-  acao: string; // ex: "EDIÇÃO", "REMOÇÃO", "CRIAÇÃO"
-  dataHora: string; // "AAAA-MM-DD HH:MM:SS"
-  valorAntigo?: string; // Opcional, para logs de auditoria
-  valorNovo?: string; // Opcional, para logs de auditoria
-  justificativa?: string; // Opcional, para logs de auditoria
-  detalhes?: string; // Novo campo para mensagens de erro ou detalhes adicionais
+  eventoId?: string;
+  usuario?: string;
+  acao: string;
+  dataHora: string;
+  valorAntigo?: string;
+  valorNovo?: string;
+  justificativa?: string;
 }

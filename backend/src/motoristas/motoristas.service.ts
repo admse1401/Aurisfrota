@@ -46,6 +46,22 @@ export class MotoristasService {
     return this.sanitize(motorista);
   }
 
+  async remove(id: string) {
+    const motorista = await this.prisma.motorista.findUnique({
+      where: { id },
+    });
+    if (!motorista) {
+      throw new NotFoundException('Motorista não encontrado.');
+    }
+
+    await this.prisma.motorista.update({
+      where: { id },
+      data: { status: 'INATIVO' },
+    });
+
+    return { message: 'Motorista inativado com sucesso.' };
+  }
+
   private sanitize(m: any) {
     const { pinHash, ...rest } = m;
     return rest;
