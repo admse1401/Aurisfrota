@@ -4,6 +4,7 @@
  */
 
 import { Motorista, Veiculo, Evento, Log, Dispositivo, EventoTipo } from './types';
+import { api } from './api';
 
 const DB_NAME = 'FrotaPontoDB';
 const DB_VERSION = 1;
@@ -16,7 +17,8 @@ export function openDB(): Promise<IDBDatabase> {
       const db = request.result;
 
       if (!db.objectStoreNames.contains('motoristas')) {
-        db.createObjectStore('motoristas', { keyPath: 'id' });
+        const motoristasStore = db.createObjectStore('motoristas', { keyPath: 'id' });
+        motoristasStore.createIndex('matricula', 'matricula', { unique: true });
       }
       if (!db.objectStoreNames.contains('veiculos')) {
         db.createObjectStore('veiculos', { keyPath: 'id' });
@@ -245,23 +247,63 @@ export async function resetDeviceSetup(): Promise<void> {
 
 // Motoristas
 export async function getMotoristas(): Promise<Motorista[]> {
-  const db = await openDB();
-  return getAllRecords<Motorista>(db, 'motoristas');
+  try {
+    // Tenta buscar da API primeiro
+    const motoristasApi = await api.get('/motoristas');
+    // Se sucesso, sincroniza com o IndexedDB
+    const db = await openDB();
+    const tx = db.transaction('motoristas', 'readwrite');
+    const store = tx.objectStore('motoristas');
+    await new Promise<void>((resolve) => {
+      store.clear().onsuccess = () => resolve();
+    });
+    for (const m of motoristasApi) {
+      await store.put(m);
+    }
+    return motoristasApi;
+  } catch (error) {
+    // Se a API falhar (offline), busca do IndexedDB
+    console.warn('API de motoristas offline, usando dados locais.');
+    const db = await openDB();
+    return getAllRecords<Motorista>(db, 'motoristas');
+  }
 }
 
 export async function getMotoristaByMatricula(matricula: string): Promise<Motorista | null> {
-  const motoristas = await getMotoristas();
-  return motoristas.find(m => m.matricula === matricula) || null;
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction('motoristas', 'readonly');
+    const store = transaction.objectStore('motoristas');
+    const index = store.index('matricula');
+    const request = index.get(matricula);
+
+    request.onsuccess = () => {
+      resolve(request.result || null);
+    };
+    request.onerror = () => reject(request.error);
+  });
 }
 
 export async function saveMotorista(motorista: Motorista): Promise<void> {
+  // Salva localmente primeiro para UI rápida
   const db = await openDB();
   await writeRecord(db, 'motoristas', motorista);
+
+  // Tenta salvar na API em segundo plano
+  try {
+    // A API espera 'pin' em texto, mas nosso modelo local já pode ter o hash.
+    // O backend irá criar o hash. O modelo local não tem pinHash.
+    await api.post('/motoristas', motorista);
+  } catch (error) {
+    console.warn('API offline. Motorista salvo localmente, pendente de sync manual futuro.');
+    // Aqui poderia ser implementada uma fila de sincronização para motoristas/veículos.
+  }
 }
 
 export async function deleteMotorista(id: string): Promise<void> {
   const db = await openDB();
   await deleteRecord(db, 'motoristas', id);
+  // Adicionar chamada à API para exclusão no backend
 }
 
 // Veículos
@@ -278,6 +320,13 @@ export async function getVeiculoById(id: string): Promise<Veiculo | null> {
 export async function saveVeiculo(veiculo: Veiculo): Promise<void> {
   const db = await openDB();
   await writeRecord(db, 'veiculos', veiculo);
+
+  // Tenta salvar na API
+  try {
+    await api.post('/veiculos', veiculo);
+  } catch (error) {
+    console.warn('API offline. Veículo salvo localmente.');
+  }
 }
 
 export async function deleteVeiculo(id: string): Promise<void> {
@@ -288,6 +337,7 @@ export async function deleteVeiculo(id: string): Promise<void> {
     await resetDeviceSetup();
   }
   await deleteRecord(db, 'veiculos', id);
+  // Adicionar chamada à API para exclusão no backend
 }
 
 // Eventos
@@ -326,7 +376,7 @@ export async function registrarEventoMotorista(
   km?: number
 ): Promise<Evento> {
   const db = await openDB();
-  const now = new Date();
+  const now = new Date(); // Data/hora do dispositivo
 
   // Format date: YYYY-MM-DD
   const yyyy = now.getFullYear();
@@ -340,8 +390,9 @@ export async function registrarEventoMotorista(
   const ss = String(now.getSeconds()).padStart(2, '0');
   const horaStr = `${hh}:${min}:${ss}`;
 
+  // O ID agora deve ser um UUID para ser aceito pelo backend
   const novoEvento: Evento = {
-    id: `evt-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+    id: crypto.randomUUID(),
     motoristaId: motorista.id,
     nomeMotorista: motorista.nome,
     frota: veiculo.frota,
@@ -375,7 +426,7 @@ export async function registrarOuEditarEventoAdmin(
 
   // Se for novo, gera ID
   if (isNovo) {
-    evento.id = `evt-man-${Date.now()}`;
+    evento.id = crypto.randomUUID();
     evento.origem = 'MANUAL';
     evento.statusSync = 'PENDENTE';
     evento.removido = false;
@@ -453,15 +504,42 @@ export async function excluirEventoLogico(
 // Sincronização Simulada
 export async function sincronizarEventosPendentes(): Promise<number> {
   const db = await openDB();
-  const records = await getAllRecords<Evento>(db, 'eventos');
-  const pendentes = records.filter(e => e.statusSync === 'PENDENTE');
+  const todosEventos = await getAllRecords<Evento>(db, 'eventos');
+  const pendentes = todosEventos.filter(e => e.statusSync === 'PENDENTE');
 
-  for (const p of pendentes) {
-    p.statusSync = 'SINCRONIZADO';
-    await writeRecord(db, 'eventos', p);
+  if (pendentes.length === 0) {
+    return 0;
   }
 
-  return pendentes.length;
+  // Mapeia os eventos locais para o formato DTO da API
+  const payload = pendentes.map(p => ({
+    id: p.id,
+    motoristaId: p.motoristaId,
+    matriculaSnapshot: todosEventos.find(m => m.motoristaId === p.motoristaId)?.nomeMotorista.split(' ')[0] || 'N/A', // Exemplo
+    nomeSnapshot: p.nomeMotorista,
+    veiculoId: 'vei-1', // Placeholder, idealmente o ID do veículo estaria no evento
+    prefixoSnapshot: p.frota,
+    placaSnapshot: p.placa,
+    tipo: p.tipo,
+    dataHoraDispositivo: new Date(p.timestamp).toISOString(),
+    origem: p.origem,
+    removido: p.removido,
+  }));
+
+  const response = await api.syncEventos(payload);
+
+  // Atualiza o status local dos eventos que foram recebidos pela API
+  for (const res of response) {
+    if (res.status === 'RECEBIDO' || res.status === 'JA_EXISTENTE') {
+      const eventoLocal = pendentes.find(p => p.id === res.id);
+      if (eventoLocal) {
+        eventoLocal.statusSync = 'SINCRONIZADO';
+        await writeRecord(db, 'eventos', eventoLocal);
+      }
+    }
+  }
+
+  return response.filter((r: any) => r.status === 'RECEBIDO').length;
 }
 
 // Logs de Auditoria

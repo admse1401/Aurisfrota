@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Users, Bus, Calendar, FileSpreadsheet, History, Shield, 
@@ -470,7 +470,9 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     return { pares, resumoTotais };
   }
 
-  const dadosRelatorio = gerarDadosRelatorioFIP();
+  const dadosRelatorio = useMemo(() => gerarDadosRelatorioFIP(), [
+    eventos, fipFiltroMotorista, fipFiltroDataInicio, fipFiltroDataFim, motoristas
+  ]);
 
   // Exportar para CSV (BOM UTF-8, ponto-e-vírgula para Excel PT-BR)
   function exportarCSV() {
