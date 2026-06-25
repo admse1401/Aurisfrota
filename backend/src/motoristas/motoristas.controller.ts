@@ -1,6 +1,8 @@
-import { Controller, Get, Post, Delete, Param, Body } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body } from '@nestjs/common';
 import { MotoristasService } from './motoristas.service';
 import { CreateMotoristaDto } from './dto/create-motorista.dto';
+import { UpdateMotoristaDto } from './dto/update-motorista.dto';
+import { LoginMotoristaDto } from './dto/login-motorista.dto';
 
 @Controller('motoristas')
 export class MotoristasController {
@@ -11,6 +13,11 @@ export class MotoristasController {
     return this.service.create(dto);
   }
 
+  @Post('login')
+  login(@Body() dto: LoginMotoristaDto) {
+    return this.service.login(dto.matricula, dto.pin);
+  }
+
   @Get()
   findAll() {
     return this.service.findAll();
@@ -19,6 +26,11 @@ export class MotoristasController {
   @Get(':matricula')
   findByMatricula(@Param('matricula') matricula: string) {
     return this.service.findByMatricula(matricula);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() dto: UpdateMotoristaDto) {
+    return this.service.update(id, dto);
   }
 
   @Delete(':id')

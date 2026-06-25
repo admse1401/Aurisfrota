@@ -183,12 +183,31 @@ export async function getMotoristaByMatricula(matricula: string): Promise<Motori
   }
 }
 
+export async function loginMotorista(matricula: string, pin: string): Promise<Motorista | null> {
+  try {
+    const data = await api.post<any>('/motoristas/login', { matricula, pin });
+    return apiMotoristaToLocal(data);
+  } catch (err: any) {
+    if (err.message?.includes('PIN incorreto')) return null;
+    if (err.message?.includes('não encontrado')) return null;
+    throw err;
+  }
+}
+
 export async function saveMotorista(motorista: Motorista): Promise<void> {
-  await api.post('/motoristas', {
-    nome: motorista.nome,
-    matricula: motorista.matricula,
-    pin: motorista.pin,
-  });
+  if (motorista.id) {
+    // Edição: PATCH com campos alteráveis
+    const body: any = { nome: motorista.nome };
+    if (motorista.pin) body.pin = motorista.pin;
+    await api.patch(`/motoristas/${motorista.id}`, body);
+  } else {
+    // Criação
+    await api.post('/motoristas', {
+      nome: motorista.nome,
+      matricula: motorista.matricula,
+      pin: motorista.pin,
+    });
+  }
 }
 
 export async function deleteMotorista(id: string): Promise<void> {

@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Grid, UserCheck, Bus, LogOut, ArrowRight, Delete, Clock, CheckCircle, ShieldAlert } from 'lucide-react';
-import { getMotoristaByMatricula, getProximoEventoTipo, registrarEventoMotorista } from '../db';
+import { loginMotorista, getProximoEventoTipo, registrarEventoMotorista } from '../db';
 import { Motorista, Veiculo, EventoTipo } from '../types';
 
 interface DriverAppProps {
@@ -93,26 +93,19 @@ export default function DriverApp({ veiculoVinculado, onAdminToggle }: DriverApp
     setErrorMsg('');
 
     try {
-      const mot = await getMotoristaByMatricula(matricula);
+      const mot = await loginMotorista(matricula, pin);
       if (!mot) {
-        setErrorMsg('Motorista não encontrado. Verifique a matrícula.');
+        setErrorMsg('Matrícula ou PIN incorretos. Tente novamente.');
         setIsVerifying(false);
         return;
       }
 
-      if (mot.pin !== pin) {
-        setErrorMsg('PIN incorreto. Tente novamente.');
-        setIsVerifying(false);
-        return;
-      }
-
-      // Login efetuado com sucesso! Descobrir o próximo tipo (RN001)
       const tipo = await getProximoEventoTipo(mot.id);
       setProximoTipo(tipo);
       setMotoristaAtivo(mot);
       setErrorMsg('');
     } catch (err) {
-      setErrorMsg('Erro ao autenticar motorista.');
+      setErrorMsg('Erro ao autenticar motorista. Verifique a conexão.');
     } finally {
       setIsVerifying(false);
     }

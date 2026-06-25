@@ -1,7 +1,8 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateMotoristaDto } from './dto/create-motorista.dto';
+import { UpdateMotoristaDto } from './dto/update-motorista.dto';
 
 @Injectable()
 export class MotoristasService {
@@ -44,6 +45,42 @@ export class MotoristasService {
       throw new NotFoundException('Motorista não encontrado.');
     }
     return this.sanitize(motorista);
+  }
+
+  async login(matricula: string, pin: string) {
+    const motorista = await this.prisma.motorista.findUnique({
+      where: { matricula },
+    });
+    if (!motorista || motorista.status === 'INATIVO') {
+      throw new NotFoundException('Motorista não encontrado.');
+    }
+
+    const pinValido = await bcrypt.compare(pin, motorista.pinHash);
+    if (!pinValido) {
+      throw new UnauthorizedException('PIN incorreto.');
+    }
+
+    return this.sanitize(motorista);
+  }
+
+  async update(id: string, dto: UpdateMotoristaDto) {
+    const motorista = await this.prisma.motorista.findUnique({
+      where: { id },
+    });
+    if (!motorista) {
+      throw new NotFoundException('Motorista não encontrado.');
+    }
+
+    const data: any = {};
+    if (dto.nome) data.nome = dto.nome;
+    if (dto.pin) data.pinHash = await bcrypt.hash(dto.pin, 10);
+
+    const atualizado = await this.prisma.motorista.update({
+      where: { id },
+      data,
+    });
+
+    return this.sanitize(atualizado);
   }
 
   async remove(id: string) {
