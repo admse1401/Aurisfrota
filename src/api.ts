@@ -22,27 +22,28 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     ...options?.headers,
   };
 
+  let response;
   try {
-    const response = await fetch(url, { ...options, headers });
-
-    if (!response.ok) {
-      // Tenta extrair uma mensagem de erro do corpo da resposta
-      const errorData = await response.json().catch(() => null);
-      const errorMessage = errorData?.message || `Erro na API: ${response.status} ${response.statusText}`;
-      throw new Error(errorMessage);
-    }
-
-    // Retorna null se a resposta for 204 No Content
-    if (response.status === 204) {
-      return null as T;
-    }
-
-    return response.json();
-  } catch (error) {
-    // Captura erros de rede (ex: servidor offline) e os relança.
-    console.error(`Erro na requisição para ${url}:`, error);
+    response = await fetch(url, { ...options, headers });
+  } catch (networkError) {
+    console.error(`Erro de REDE para ${url}:`, networkError);
     throw new Error('Falha de comunicação com o servidor. Verifique a conexão e se o backend está rodando.');
   }
+
+  if (!response.ok) {
+    // Tenta extrair uma mensagem de erro do corpo da resposta
+    const errorData = await response.json().catch(() => null); // Evita erro se o corpo não for JSON
+    const errorMessage = errorData?.message || `Erro na API: ${response.status} ${response.statusText}`;
+    console.error(`Erro de API para ${url}:`, errorMessage);
+    throw new Error(errorMessage);
+  }
+
+  // Retorna null se a resposta for 204 No Content
+  if (response.status === 204) {
+    return null as T;
+  }
+
+  return response.json();
 }
 
 export const api = {
