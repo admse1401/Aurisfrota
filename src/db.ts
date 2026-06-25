@@ -460,41 +460,42 @@ export async function registrarEventoMotorista(
   tipo: EventoTipo,
   km?: number
 ): Promise<Evento> {
-  const db = await openDB();
-  const now = new Date(); // Data/hora do dispositivo
+  try {
+    const db = await openDB();
+    const now = new Date(); // Data/hora do dispositivo
 
-  // Format date: YYYY-MM-DD
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
-  const dataStr = `${yyyy}-${mm}-${dd}`;
+    // Format date: YYYY-MM-DD
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const dataStr = `${yyyy}-${mm}-${dd}`;
 
-  // Format time: HH:MM:SS
-  const hh = String(now.getHours()).padStart(2, '0');
-  const min = String(now.getMinutes()).padStart(2, '0');
-  const ss = String(now.getSeconds()).padStart(2, '0');
-  const horaStr = `${hh}:${min}:${ss}`;
+    // Format time: HH:MM:SS
+    const hh = String(now.getHours()).padStart(2, '0');
+    const min = String(now.getMinutes()).padStart(2, '0');
+    const ss = String(now.getSeconds()).padStart(2, '0');
+    const horaStr = `${hh}:${min}:${ss}`;
 
-  // O ID agora deve ser um UUID para ser aceito pelo backend
-  const novoEvento: Evento = {
-    id: crypto.randomUUID(),
-    motoristaId: motorista.id,
-    nomeMotorista: motorista.nome,
-    frota: veiculo.frota,
-    placa: veiculo.placa,
-    data: dataStr,
-    hora: horaStr,
-    timestamp: now.getTime(),
-    tipo,
-    kmInicial: tipo === 'ENTRADA' ? km : undefined,
-    kmFinal: tipo === 'SAIDA' ? km : undefined,
-    statusSync: 'PENDENTE',
-    origem: 'AUTOMATICO',
-    removido: false
-  };
+    // O ID agora deve ser um UUID para ser aceito pelo backend
+    const novoEvento: Evento = {
+      id: crypto.randomUUID(),
+      motoristaId: motorista.id,
+      nomeMotorista: motorista.nome,
+      frota: veiculo.frota,
+      placa: veiculo.placa,
+      data: dataStr,
+      hora: horaStr,
+      timestamp: now.getTime(),
+      tipo,
+      kmInicial: tipo === 'ENTRADA' ? km : undefined,
+      kmFinal: tipo === 'SAIDA' ? km : undefined,
+      statusSync: 'PENDENTE',
+      origem: 'AUTOMATICO',
+      removido: false
+    };
 
-  await writeRecord(db, 'eventos', novoEvento);
-  return novoEvento;
+    await writeRecord(db, 'eventos', novoEvento);
+    return novoEvento;
   } catch (error) {
     await logErrorToDb(error, `registrarEventoMotorista (${motorista.matricula})`, 'ERRO_INDEXEDDB_REGISTRAR_EVENTO');
     throw error;
