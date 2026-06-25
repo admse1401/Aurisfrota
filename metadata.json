@@ -1,0 +1,6 @@
+{
+  "name": "Auris Frota",
+  "description": "Sistema de registro de jornada de motoristas de transporte coletivo para tablet em modo quiosque.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
