@@ -614,20 +614,26 @@ export async function sincronizarEventosPendentes(): Promise<number> {
 
   // Precisamos dos dados de veículos para encontrar o veiculoId
   const veiculos = await getAllRecords<Veiculo>(db, 'veiculos');
+  // E também dos motoristas para pegar a matrícula e o nome para o snapshot
+  const motoristas = await getAllRecords<Motorista>(db, 'motoristas');
 
   // Mapeia os eventos locais para o formato DTO da API
-  const payload = pendentes.map(p => ({
-    id: p.id,
-    motoristaId: p.motoristaId,
-    // Encontra o ID do veículo correspondente à frota/placa do evento
-    veiculoId: veiculos.find(v => v.frota === p.frota)?.id || 'veiculo-nao-encontrado',
-    prefixoSnapshot: p.frota,
-    placaSnapshot: p.placa,
-    tipo: p.tipo,
-    dataHoraDispositivo: new Date(p.timestamp).toISOString(),
-    origem: p.origem,
-    removido: p.removido,
-  }));
+  const payload = pendentes.map(p => {
+    const motorista = motoristas.find(m => m.id === p.motoristaId);
+    return {
+      id: p.id,
+      motoristaId: p.motoristaId,
+      matriculaSnapshot: motorista?.matricula || 'S/M', // Backend exige
+      nomeSnapshot: p.nomeMotorista, // Backend exige
+      veiculoId: veiculos.find(v => v.frota === p.frota)?.id || 'veiculo-nao-encontrado',
+      prefixoSnapshot: p.frota,
+      placaSnapshot: p.placa,
+      tipo: p.tipo,
+      dataHoraDispositivo: new Date(p.timestamp).toISOString(),
+      origem: p.origem,
+      removido: p.removido,
+    };
+  });
 
   // Filtra eventos que não conseguiram encontrar um veiculoId válido
   const eventosParaEnviar = payload.filter(p => p.veiculoId !== 'veiculo-nao-encontrado');
