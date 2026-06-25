@@ -147,7 +147,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     }
 
     const mSave: Motorista = {
-      id: editingMotorista ? editingMotorista.id : `mot-${Date.now()}`,
+      id: editingMotorista ? editingMotorista.id : '', // A API irá gerar o ID
       nome: motNome.trim(),
       matricula: motMatricula.trim(),
       pin: motPin.trim()
@@ -157,7 +157,10 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       await saveMotorista(mSave);
       setShowAddMotorista(false);
       carregarTodosDados();
-    } catch (err) {
+    } catch (err: any) {
+      // Exibe o erro da API para o usuário
+      setMotError(err.message || 'Erro ao salvar motorista.');
+      // Não recarrega os dados em caso de erro
       setMotError('Erro ao salvar motorista no banco.');
     }
   }
@@ -167,7 +170,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       try {
         await deleteMotorista(id);
         carregarTodosDados();
-      } catch (err) {
+      } catch (err: any) {
+        alert(err.message || 'Erro ao excluir motorista.');
         alert('Erro ao excluir motorista.');
       }
     }
@@ -210,7 +214,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     }
 
     const vSave: Veiculo = {
-      id: editingVeiculo ? editingVeiculo.id : `vei-${Date.now()}`,
+      id: editingVeiculo ? editingVeiculo.id : '', // A API irá gerar o ID
       frota: frotaT,
       placa: placaT
     };
@@ -219,7 +223,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       await saveVeiculo(vSave);
       setShowAddVeiculo(false);
       carregarTodosDados();
-    } catch (err) {
+    } catch (err: any) {
+      setVeiError(err.message || 'Erro ao salvar veículo.');
       setVeiError('Erro ao salvar veículo no banco.');
     }
   }
@@ -229,7 +234,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       try {
         await deleteVeiculo(id);
         carregarTodosDados();
-      } catch (err) {
+      } catch (err: any) {
+        alert(err.message || 'Erro ao excluir veículo.');
         alert('Erro ao excluir veículo.');
       }
     }

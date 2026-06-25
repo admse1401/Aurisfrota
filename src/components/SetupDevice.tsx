@@ -58,20 +58,19 @@ export default function SetupDevice({ onSetupComplete }: SetupDeviceProps) {
     }
 
     const novo: Veiculo = {
-      id: `vei-${Date.now()}`,
+      id: crypto.randomUUID(),
       frota: frotaTrimmed,
       placa: placaTrimmed
     };
 
     try {
-      await saveVeiculo(novo);
-      const list = await getVeiculos();
-      setVeiculos(list);
-      setSelectedVeiculoId(novo.id);
+      await saveVeiculo(novo); // Salva na API
+      await carregarVeiculos(); // Recarrega a lista completa da API
       setNovaFrota('');
       setNovaPlaca('');
       setShowAddForm(false);
-    } catch (err) {
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Erro ao salvar o veículo.');
       setErrorMessage('Erro ao salvar o veículo no banco de dados.');
     }
   }

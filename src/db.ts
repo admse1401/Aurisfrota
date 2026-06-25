@@ -248,19 +248,21 @@ export async function resetDeviceSetup(): Promise<void> {
 // Motoristas
 export async function getMotoristas(): Promise<Motorista[]> {
   try {
-    // Tenta buscar da API primeiro
+    // API-first: Tenta buscar da API.
     const motoristasApi = await api.get('/motoristas');
-    // Se sucesso, sincroniza com o IndexedDB
+    // Se sucesso, limpa o store local e o repopula com dados frescos da API.
     const db = await openDB();
     const tx = db.transaction('motoristas', 'readwrite');
     const store = tx.objectStore('motoristas');
     await new Promise<void>((resolve) => {
       store.clear().onsuccess = () => resolve();
     });
-    for (const m of motoristasApi) {
-      await store.put(m);
-    }
-    return motoristasApi;
+    // Usando Promise.all para performance
+    await Promise.all(motoristasApi.map((m: Motorista) => 
+      new Promise<void>(res => { store.put(m).onsuccess = () => res(); })
+    ));
+
+    return motoristasApi as Motorista[];
   } catch (error) {
     // Se a API falhar (offline), busca do IndexedDB
     console.warn('API de motoristas offline, usando dados locais.');
@@ -270,40 +272,45 @@ export async function getMotoristas(): Promise<Motorista[]> {
 }
 
 export async function getMotoristaByMatricula(matricula: string): Promise<Motorista | null> {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction('motoristas', 'readonly');
-    const store = transaction.objectStore('motoristas');
-    const index = store.index('matricula');
-    const request = index.get(matricula);
-
-    request.onsuccess = () => {
-      resolve(request.result || null);
-    };
-    request.onerror = () => reject(request.error);
-  });
-}
-
-export async function saveMotorista(motorista: Motorista): Promise<void> {
-  // Salva localmente primeiro para UI rápida
-  const db = await openDB();
-  await writeRecord(db, 'motoristas', motorista);
-
-  // Tenta salvar na API em segundo plano
   try {
-    // A API espera 'pin' em texto, mas nosso modelo local já pode ter o hash.
-    // O backend irá criar o hash. O modelo local não tem pinHash.
-    await api.post('/motoristas', motorista);
+    // Tenta buscar diretamente na API para o login
+    return await api.get<Motorista>(`/motoristas/matricula/${matricula}`);
   } catch (error) {
-    console.warn('API offline. Motorista salvo localmente, pendente de sync manual futuro.');
-    // Aqui poderia ser implementada uma fila de sincronização para motoristas/veículos.
+    // Fallback para o IndexedDB se a API estiver offline
+    console.warn(`API offline. Buscando matrícula ${matricula} localmente.`);
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction('motoristas', 'readonly');
+      const store = transaction.objectStore('motoristas');
+      const index = store.index('matricula');
+      const request = index.get(matricula);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    });
   }
 }
 
+export async function saveMotorista(motorista: Motorista): Promise<void> {
+  // A responsabilidade de salvar agora é inteiramente da API.
+  // O componente que chama esta função deve recarregar a lista para obter o novo item.
+  await api.post('/motoristas', {
+    nome: motorista.nome,
+    matricula: motorista.matricula,
+    pin: motorista.pin,
+  });
+}
+
 export async function deleteMotorista(id: string): Promise<void> {
-  const db = await openDB();
-  await deleteRecord(db, 'motoristas', id);
-  // Adicionar chamada à API para exclusão no backend
+  // A responsabilidade de deletar agora é da API.
+  await api.delete(`/motoristas/${id}`);
+  
+  // Também remove do IndexedDB para consistência em caso de offline.
+  try {
+    const db = await openDB();
+    await deleteRecord(db, 'motoristas', id);
+  } catch (dbError) {
+    console.warn('API deletou, mas falhou ao limpar o registro do IndexedDB:', dbError);
+  }
 }
 
 // Veículos
@@ -318,10 +325,11 @@ export async function getVeiculos(): Promise<Veiculo[]> {
     await new Promise<void>((resolve) => {
       store.clear().onsuccess = () => resolve();
     });
-    for (const v of veiculosApi) {
-      await store.put(v);
-    }
-    return veiculosApi;
+    await Promise.all(veiculosApi.map((v: Veiculo) => 
+      new Promise<void>(res => { store.put(v).onsuccess = () => res(); })
+    ));
+
+    return veiculosApi as Veiculo[];
   } catch (error) {
     console.warn('API de veículos offline, usando dados locais.');
     const db = await openDB();
@@ -330,23 +338,26 @@ export async function getVeiculos(): Promise<Veiculo[]> {
 }
 
 export async function getVeiculoById(id: string): Promise<Veiculo | null> {
-  const veiculos = await getVeiculos();
-  return veiculos.find(v => v.id === id) || null;
+  // Esta função é usada no setup. É melhor ler do cache local (que foi sincronizado)
+  // para evitar uma chamada de rede extra na inicialização.
+  const db = await openDB();
+  const veiculos = await getAllRecords<Veiculo>(db, 'veiculos');
+  return veiculos.find((v: Veiculo) => v.id === id) || null;
 }
 
 export async function saveVeiculo(veiculo: Veiculo): Promise<void> {
-  const db = await openDB();
-  await writeRecord(db, 'veiculos', veiculo);
-
-  // Tenta salvar na API
-  try {
-    await api.post('/veiculos', veiculo);
-  } catch (error) {
-    console.warn('API offline. Veículo salvo localmente, pendente de sync manual futuro.');
-  }
+  // Salva via API
+  await api.post('/veiculos', {
+    prefixo: veiculo.frota, // O backend espera 'prefixo'
+    placa: veiculo.placa,
+  });
 }
 
 export async function deleteVeiculo(id: string): Promise<void> {
+  // Deleta via API
+  await api.delete(`/veiculos/${id}`);
+
+  // Limpa o setup local se o veículo excluído era o vinculado
   const db = await openDB();
   // Ensure we also clean device setup if deleted
   const currentSetup = await getDeviceSetup();
@@ -354,21 +365,23 @@ export async function deleteVeiculo(id: string): Promise<void> {
     await resetDeviceSetup();
   }
   await deleteRecord(db, 'veiculos', id);
-  // Tenta deletar na API
-  try {
-    await api.delete(`/veiculos/${id}`);
-  } catch (error) {
-    console.warn('API offline. Exclusão do veículo pendente de sync.');
-  }
 }
 
 // Eventos
 export async function getEventos(includeRemoved = false): Promise<Evento[]> {
-  const db = await openDB();
-  const records = await getAllRecords<Evento>(db, 'eventos');
-  // Sort by timestamp desc
-  const sorted = records.sort((a, b) => b.timestamp - a.timestamp);
-  return includeRemoved ? sorted : sorted.filter(e => !e.removido);
+  try {
+    // O painel de admin agora lê da API como fonte da verdade.
+    const eventosApi = await api.get<Evento[]>('/eventos');
+    const sorted = eventosApi.sort((a, b) => new Date(b.data + 'T' + b.hora).getTime() - new Date(a.data + 'T' + a.hora).getTime());
+    return includeRemoved ? sorted : sorted.filter(e => !e.removido);
+  } catch (error) {
+    // Fallback para IndexedDB se a API estiver offline
+    console.warn('API de eventos offline, usando dados locais para o painel de admin.');
+    const db = await openDB();
+    const records = await getAllRecords<Evento>(db, 'eventos');
+    const sorted = records.sort((a, b) => b.timestamp - a.timestamp);
+    return includeRemoved ? sorted : sorted.filter(e => !e.removido);
+  }
 }
 
 /**
@@ -376,7 +389,10 @@ export async function getEventos(includeRemoved = false): Promise<Evento[]> {
  */
 export async function getProximoEventoTipo(motoristaId: string): Promise<EventoTipo> {
   const eventos = await getEventos(false); // excluding removed
-  const motoristaEventos = eventos
+  // Para esta regra, é mais seguro usar o cache local (IndexedDB) para evitar
+  // que uma falha de rede impeça o motorista de bater o ponto corretamente.
+  const db = await openDB();
+  const motoristaEventos = (await getAllRecords<Evento>(db, 'eventos'))
     .filter(e => e.motoristaId === motoristaId)
     .sort((a, b) => b.timestamp - a.timestamp); // newest first
 
@@ -530,18 +546,16 @@ export async function sincronizarEventosPendentes(): Promise<number> {
   const pendentes = todosEventos.filter(e => e.statusSync === 'PENDENTE');
 
   if (pendentes.length === 0) {
-    return 0;
+    return 0; // Nada a fazer
   }
 
-  const motoristas = await getAllRecords<Motorista>(db, 'motoristas');
+  // Precisamos dos dados de veículos para encontrar o veiculoId
   const veiculos = await getAllRecords<Veiculo>(db, 'veiculos');
 
   // Mapeia os eventos locais para o formato DTO da API
   const payload = pendentes.map(p => ({
     id: p.id,
     motoristaId: p.motoristaId,
-    matriculaSnapshot: motoristas.find(m => m.id === p.motoristaId)?.matricula || 'N/A',
-    nomeSnapshot: p.nomeMotorista,
     // Encontra o ID do veículo correspondente à frota/placa do evento
     veiculoId: veiculos.find(v => v.frota === p.frota)?.id || 'veiculo-nao-encontrado',
     prefixoSnapshot: p.frota,
@@ -553,26 +567,28 @@ export async function sincronizarEventosPendentes(): Promise<number> {
   }));
 
   // Filtra eventos que não conseguiram encontrar um veiculoId válido
-  const payloadValido = payload.filter(p => p.veiculoId !== 'veiculo-nao-encontrado');
-  if (payloadValido.length === 0) {
-    console.warn('Nenhum evento pendente com veículo correspondente para sincronizar.');
+  const eventosParaEnviar = payload.filter(p => p.veiculoId !== 'veiculo-nao-encontrado');
+  if (eventosParaEnviar.length === 0) {
+    console.warn('Nenhum evento pendente com veículo correspondente encontrado no cache local para sincronizar.');
     return 0;
   }
 
-  const response = await api.syncEventos(payloadValido);
+  // Envia para a API
+  const response = await api.syncEventos(eventosParaEnviar);
 
   // Atualiza o status local dos eventos que foram recebidos pela API
+  let successCount = 0;
   for (const res of response) {
     if (res.status === 'RECEBIDO' || res.status === 'JA_EXISTENTE') {
       const eventoLocal = pendentes.find(p => p.id === res.id);
       if (eventoLocal) {
         eventoLocal.statusSync = 'SINCRONIZADO';
         await writeRecord(db, 'eventos', eventoLocal);
+        if (res.status === 'RECEBIDO') successCount++;
       }
     }
   }
-
-  return response.filter((r: any) => r.status === 'RECEBIDO').length;
+  return successCount;
 }
 
 // Logs de Auditoria
