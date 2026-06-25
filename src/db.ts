@@ -292,6 +292,7 @@ export async function getMotoristas(): Promise<Motorista[]> {
   } catch (error) {
     // Se a API falhar (offline), busca do IndexedDB
     console.warn('API de motoristas offline, usando dados locais.');
+    await logErrorToDb(error, 'getMotoristas', 'ERRO_API_MOTORISTAS');
     const db = await openDB();
     return getAllRecords<Motorista>(db, 'motoristas');
   }
