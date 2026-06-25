@@ -43,11 +43,12 @@ export interface Evento {
 
 export interface Log {
   id: string;
-  eventoId: string;
-  usuario: string; // "Administrador" ou similar
+  eventoId?: string; // Opcional, para logs de eventos
+  usuario?: string; // Opcional, para logs de ações de usuário
   acao: string; // ex: "EDIÇÃO", "REMOÇÃO", "CRIAÇÃO"
   dataHora: string; // "AAAA-MM-DD HH:MM:SS"
-  valorAntigo: string;
-  valorNovo: string;
-  justificativa: string;
+  valorAntigo?: string; // Opcional, para logs de auditoria
+  valorNovo?: string; // Opcional, para logs de auditoria
+  justificativa?: string; // Opcional, para logs de auditoria
+  detalhes?: string; // Novo campo para mensagens de erro ou detalhes adicionais
 }

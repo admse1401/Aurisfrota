@@ -177,6 +177,23 @@ export async function seedInitialDataIfNeeded(): Promise<void> {
   }
 }
 
+// Novo helper para registrar erros no IndexedDB
+async function logErrorToDb(error: any, context: string, action: string = 'ERRO_APLICACAO'): Promise<void> {
+  try {
+    const db = await openDB();
+    const now = new Date();
+    const log: Log = {
+      id: crypto.randomUUID(),
+      acao: action,
+      dataHora: now.toLocaleString('pt-BR'),
+      detalhes: `Contexto: ${context} | Erro: ${error instanceof Error ? error.message : String(error)}`,
+    };
+    await writeRecord(db, 'logs', log);
+  } catch (dbError) {
+    console.error(`[CRITICAL] Falha ao registrar erro no IndexedDB:`, dbError);
+  }
+}
+
 // Generic IndexedDB helper methods
 function getCount(db: IDBDatabase, storeName: string): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -194,7 +211,10 @@ function writeRecord<T>(db: IDBDatabase, storeName: string, record: T): Promise<
     const store = transaction.objectStore(storeName);
     const request = store.put(record);
     request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
+    request.onerror = () => {
+      logErrorToDb(request.error, `writeRecord to ${storeName}`, 'ERRO_INDEXEDDB_WRITE');
+      reject(request.error);
+    };
   });
 }
 
@@ -204,7 +224,10 @@ function getAllRecords<T>(db: IDBDatabase, storeName: string): Promise<T[]> {
     const store = transaction.objectStore(storeName);
     const request = store.getAll();
     request.onsuccess = () => resolve(request.result || []);
-    request.onerror = () => reject(request.error);
+    request.onerror = () => {
+      logErrorToDb(request.error, `getAllRecords from ${storeName}`, 'ERRO_INDEXEDDB_READ');
+      reject(request.error);
+    };
   });
 }
 
@@ -214,7 +237,10 @@ function deleteRecord(db: IDBDatabase, storeName: string, id: string): Promise<v
     const store = transaction.objectStore(storeName);
     const request = store.delete(id);
     request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
+    request.onerror = () => {
+      logErrorToDb(request.error, `deleteRecord from ${storeName} (ID: ${id})`, 'ERRO_INDEXEDDB_DELETE');
+      reject(request.error);
+    };
   });
 }
 
@@ -277,6 +303,7 @@ export async function getMotoristaByMatricula(matricula: string): Promise<Motori
     return await api.get<Motorista>(`/motoristas/matricula/${matricula}`);
   } catch (error) {
     // Fallback para o IndexedDB se a API estiver offline
+    await logErrorToDb(error, `getMotoristaByMatricula (${matricula})`, 'ERRO_API_MOTORISTA_LOGIN');
     console.warn(`API offline. Buscando matrícula ${matricula} localmente.`);
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -285,7 +312,10 @@ export async function getMotoristaByMatricula(matricula: string): Promise<Motori
       const index = store.index('matricula');
       const request = index.get(matricula);
       request.onsuccess = () => resolve(request.result || null);
-      request.onerror = () => reject(request.error);
+      request.onerror = () => {
+        logErrorToDb(request.error, `getMotoristaByMatricula IndexedDB (${matricula})`, 'ERRO_INDEXEDDB_MOTORISTA_LOGIN');
+        reject(request.error);
+      };
     });
   }
 }
@@ -293,23 +323,30 @@ export async function getMotoristaByMatricula(matricula: string): Promise<Motori
 export async function saveMotorista(motorista: Motorista): Promise<void> {
   // A responsabilidade de salvar agora é inteiramente da API.
   // O componente que chama esta função deve recarregar a lista para obter o novo item.
-  await api.post('/motoristas', {
-    nome: motorista.nome,
-    matricula: motorista.matricula,
-    pin: motorista.pin,
-  });
+  try {
+    await api.post('/motoristas', {
+      nome: motorista.nome,
+      matricula: motorista.matricula,
+      pin: motorista.pin,
+    });
+  } catch (error) { await logErrorToDb(error, `saveMotorista (${motorista.matricula})`, 'ERRO_API_SAVE_MOTORISTA'); throw error; }
 }
 
 export async function deleteMotorista(id: string): Promise<void> {
   // A responsabilidade de deletar agora é da API.
-  await api.delete(`/motoristas/${id}`);
-  
+  try {
+    await api.delete(`/motoristas/${id}`);
+  } catch (error) {
+    await logErrorToDb(error, `deleteMotorista (${id})`, 'ERRO_API_DELETE_MOTORISTA');
+    throw error;
+  }
   // Também remove do IndexedDB para consistência em caso de offline.
   try {
     const db = await openDB();
     await deleteRecord(db, 'motoristas', id);
   } catch (dbError) {
     console.warn('API deletou, mas falhou ao limpar o registro do IndexedDB:', dbError);
+    await logErrorToDb(dbError, `deleteMotorista IndexedDB cleanup (${id})`, 'ERRO_INDEXEDDB_DELETE_MOTORISTA');
   }
 }
 
@@ -332,6 +369,7 @@ export async function getVeiculos(): Promise<Veiculo[]> {
     return veiculosApi as Veiculo[];
   } catch (error) {
     console.warn('API de veículos offline, usando dados locais.');
+    await logErrorToDb(error, 'getVeiculos', 'ERRO_API_VEICULOS');
     const db = await openDB();
     return getAllRecords<Veiculo>(db, 'veiculos');
   }
@@ -347,24 +385,31 @@ export async function getVeiculoById(id: string): Promise<Veiculo | null> {
 
 export async function saveVeiculo(veiculo: Veiculo): Promise<void> {
   // Salva via API
-  await api.post('/veiculos', {
-    prefixo: veiculo.frota, // O backend espera 'prefixo'
-    placa: veiculo.placa,
-  });
+  try {
+    await api.post('/veiculos', {
+      prefixo: veiculo.frota, // O backend espera 'prefixo'
+      placa: veiculo.placa,
+    });
+  } catch (error) { await logErrorToDb(error, `saveVeiculo (${veiculo.frota})`, 'ERRO_API_SAVE_VEICULO'); throw error; }
 }
 
 export async function deleteVeiculo(id: string): Promise<void> {
   // Deleta via API
-  await api.delete(`/veiculos/${id}`);
-
-  // Limpa o setup local se o veículo excluído era o vinculado
-  const db = await openDB();
-  // Ensure we also clean device setup if deleted
-  const currentSetup = await getDeviceSetup();
-  if (currentSetup?.veiculoId === id) {
-    await resetDeviceSetup();
+  try {
+    await api.delete(`/veiculos/${id}`);
+  } catch (error) {
+    await logErrorToDb(error, `deleteVeiculo (${id})`, 'ERRO_API_DELETE_VEICULO');
+    throw error;
   }
-  await deleteRecord(db, 'veiculos', id);
+  // Limpa o setup local se o veículo excluído era o vinculado
+  try {
+    const db = await openDB();
+    const currentSetup = await getDeviceSetup();
+    if (currentSetup?.veiculoId === id) {
+      await resetDeviceSetup();
+    }
+    await deleteRecord(db, 'veiculos', id);
+  } catch (dbError) { await logErrorToDb(dbError, `deleteVeiculo IndexedDB cleanup (${id})`, 'ERRO_INDEXEDDB_DELETE_VEICULO'); }
 }
 
 // Eventos
@@ -376,6 +421,7 @@ export async function getEventos(includeRemoved = false): Promise<Evento[]> {
     return includeRemoved ? sorted : sorted.filter(e => !e.removido);
   } catch (error) {
     // Fallback para IndexedDB se a API estiver offline
+    await logErrorToDb(error, 'getEventos', 'ERRO_API_GET_EVENTOS');
     console.warn('API de eventos offline, usando dados locais para o painel de admin.');
     const db = await openDB();
     const records = await getAllRecords<Evento>(db, 'eventos');
@@ -448,6 +494,10 @@ export async function registrarEventoMotorista(
 
   await writeRecord(db, 'eventos', novoEvento);
   return novoEvento;
+  } catch (error) {
+    await logErrorToDb(error, `registrarEventoMotorista (${motorista.matricula})`, 'ERRO_INDEXEDDB_REGISTRAR_EVENTO');
+    throw error;
+  }
 }
 
 /**
@@ -459,47 +509,52 @@ export async function registrarOuEditarEventoAdmin(
   justificativa: string,
   usuario = 'Administrador'
 ): Promise<void> {
-  const db = await openDB();
-  const isNovo = !evento.id;
+  try {
+    const db = await openDB();
+    const isNovo = !evento.id;
 
-  // Se for novo, gera ID
-  if (isNovo) {
-    evento.id = crypto.randomUUID();
-    evento.origem = 'MANUAL';
-    evento.statusSync = 'PENDENTE';
-    evento.removido = false;
-  }
-
-  // Se não for novo, precisamos registrar no log as alterações
-  let valorAntigo = 'Nenhum (Novo registro manual)';
-  let valorNovo = `${evento.tipo} em ${evento.data} ${evento.hora} - Veículo: ${evento.frota}`;
-
-  if (!isNovo) {
-    // Busca o atual do banco
-    const todos = await getAllRecords<Evento>(db, 'eventos');
-    const antigo = todos.find(e => e.id === evento.id);
-    if (antigo) {
-      valorAntigo = `${antigo.tipo} em ${antigo.data} ${antigo.hora} - Veículo: ${antigo.frota} (KM: ${antigo.kmInicial || antigo.kmFinal || 'Sem registro'})`;
-      valorNovo = `${evento.tipo} em ${evento.data} ${evento.hora} - Veículo: ${evento.frota} (KM: ${evento.kmInicial || evento.kmFinal || 'Sem registro'})`;
+    // Se for novo, gera ID
+    if (isNovo) {
+      evento.id = crypto.randomUUID();
+      evento.origem = 'MANUAL';
+      evento.statusSync = 'PENDENTE';
+      evento.removido = false;
     }
+
+    // Se não for novo, precisamos registrar no log as alterações
+    let valorAntigo = 'Nenhum (Novo registro manual)';
+    let valorNovo = `${evento.tipo} em ${evento.data} ${evento.hora} - Veículo: ${evento.frota}`;
+
+    if (!isNovo) {
+      // Busca o atual do banco
+      const todos = await getAllRecords<Evento>(db, 'eventos');
+      const antigo = todos.find(e => e.id === evento.id);
+      if (antigo) {
+        valorAntigo = `${antigo.tipo} em ${antigo.data} ${antigo.hora} - Veículo: ${antigo.frota} (KM: ${antigo.kmInicial || antigo.kmFinal || 'Sem registro'})`;
+        valorNovo = `${evento.tipo} em ${evento.data} ${evento.hora} - Veículo: ${evento.frota} (KM: ${evento.kmInicial || evento.kmFinal || 'Sem registro'})`;
+      }
+    }
+
+    // Salva o evento
+    await writeRecord(db, 'eventos', evento);
+
+    // Registra o log de auditoria
+    const log: Log = {
+      id: crypto.randomUUID(), // Usar UUID para consistência
+      eventoId: evento.id,
+      usuario,
+      acao: isNovo ? 'CRIAÇÃO MANUAL' : 'EDIÇÃO MANUAL',
+      dataHora: new Date().toLocaleString('pt-BR'),
+      valorAntigo,
+      valorNovo,
+      justificativa
+    };
+
+    await writeRecord(db, 'logs', log);
+  } catch (error) {
+    await logErrorToDb(error, `registrarOuEditarEventoAdmin (${evento.id || 'novo'})`, 'ERRO_INDEXEDDB_ADMIN_EVENTO');
+    throw error;
   }
-
-  // Salva o evento
-  await writeRecord(db, 'eventos', evento);
-
-  // Registra o log de auditoria
-  const log: Log = {
-    id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-    eventoId: evento.id,
-    usuario,
-    acao: isNovo ? 'CRIAÇÃO MANUAL' : 'EDIÇÃO MANUAL',
-    dataHora: new Date().toLocaleString('pt-BR'),
-    valorAntigo,
-    valorNovo,
-    justificativa
-  };
-
-  await writeRecord(db, 'logs', log);
 }
 
 /**
@@ -510,39 +565,46 @@ export async function excluirEventoLogico(
   justificativa: string,
   usuario = 'Administrador'
 ): Promise<void> {
-  const db = await openDB();
-  const todos = await getAllRecords<Evento>(db, 'eventos');
-  const evento = todos.find(e => e.id === eventoId);
+  try {
+    const db = await openDB();
+    const todos = await getAllRecords<Evento>(db, 'eventos');
+    const evento = todos.find(e => e.id === eventoId);
 
-  if (!evento) {
-    throw new Error('Evento não encontrado');
+    if (!evento) {
+      throw new Error('Evento não encontrado');
+    }
+
+    // Marca como removido e pendente de sync
+    evento.removido = true;
+    evento.statusSync = 'PENDENTE';
+
+    await writeRecord(db, 'eventos', evento);
+
+    // Registra log
+    const log: Log = {
+      id: crypto.randomUUID(), // Usar UUID para consistência
+      eventoId: eventoId,
+      usuario,
+      acao: 'EXCLUSÃO LÓGICA',
+      dataHora: new Date().toLocaleString('pt-BR'),
+      valorAntigo: `Evento Ativo (${evento.tipo} às ${evento.data} ${evento.hora})`,
+      valorNovo: `Evento Excluído Logicamente`,
+      justificativa
+    };
+
+    await writeRecord(db, 'logs', log);
+  } catch (error) {
+    await logErrorToDb(error, `excluirEventoLogico (${eventoId})`, 'ERRO_INDEXEDDB_EXCLUIR_EVENTO');
+    throw error;
   }
-
-  // Marca como removido e pendente de sync
-  evento.removido = true;
-  evento.statusSync = 'PENDENTE';
-
-  await writeRecord(db, 'eventos', evento);
-
-  // Registra log
-  const log: Log = {
-    id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-    eventoId: eventoId,
-    usuario,
-    acao: 'EXCLUSÃO LÓGICA',
-    dataHora: new Date().toLocaleString('pt-BR'),
-    valorAntigo: `Evento Ativo (${evento.tipo} às ${evento.data} ${evento.hora})`,
-    valorNovo: `Evento Excluído Logicamente`,
-    justificativa
-  };
-
-  await writeRecord(db, 'logs', log);
 }
 
 // Sincronização Simulada
 export async function sincronizarEventosPendentes(): Promise<number> {
-  const db = await openDB();
-  const todosEventos = await getAllRecords<Evento>(db, 'eventos');
+  let db: IDBDatabase;
+  let todosEventos: Evento[];
+  try { db = await openDB(); todosEventos = await getAllRecords<Evento>(db, 'eventos'); }
+  catch (error) { await logErrorToDb(error, 'sincronizarEventosPendentes - leitura inicial', 'ERRO_INDEXEDDB_SYNC_LEITURA'); throw error; }
   const pendentes = todosEventos.filter(e => e.statusSync === 'PENDENTE');
 
   if (pendentes.length === 0) {
@@ -573,22 +635,27 @@ export async function sincronizarEventosPendentes(): Promise<number> {
     return 0;
   }
 
-  // Envia para a API
-  const response = await api.syncEventos(eventosParaEnviar);
+  try {
+    // Envia para a API
+    const response = await api.syncEventos(eventosParaEnviar);
 
-  // Atualiza o status local dos eventos que foram recebidos pela API
-  let successCount = 0;
-  for (const res of response) {
-    if (res.status === 'RECEBIDO' || res.status === 'JA_EXISTENTE') {
-      const eventoLocal = pendentes.find(p => p.id === res.id);
-      if (eventoLocal) {
-        eventoLocal.statusSync = 'SINCRONIZADO';
-        await writeRecord(db, 'eventos', eventoLocal);
-        if (res.status === 'RECEBIDO') successCount++;
+    // Atualiza o status local dos eventos que foram recebidos pela API
+    let successCount = 0;
+    for (const res of response) {
+      if (res.status === 'RECEBIDO' || res.status === 'JA_EXISTENTE') {
+        const eventoLocal = pendentes.find(p => p.id === res.id);
+        if (eventoLocal) {
+          eventoLocal.statusSync = 'SINCRONIZADO';
+          await writeRecord(db, 'eventos', eventoLocal);
+          if (res.status === 'RECEBIDO') successCount++;
+        }
       }
     }
+    return successCount;
+  } catch (error) {
+    await logErrorToDb(error, 'sincronizarEventosPendentes', 'ERRO_API_SYNC_EVENTOS');
+    throw error;
   }
-  return successCount;
 }
 
 // Logs de Auditoria
