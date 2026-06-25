@@ -280,9 +280,23 @@ export async function getEventos(includeRemoved = false): Promise<Evento[]> {
 }
 
 export async function getProximoEventoTipo(motoristaId: string): Promise<EventoTipo> {
-  const eventos = await getEventos(false);
-  const motoristaEventos = eventos
-    .filter(e => e.motoristaId === motoristaId)
+  // Merge: API (cross-device) + pendentes locais (ainda não sincronizados)
+  let apiEventos: Evento[] = [];
+  try {
+    const data = await api.get<any[]>('/eventos');
+    apiEventos = data.map(apiEventoToLocal);
+  } catch { /* offline, só usa local */ }
+
+  const db = await openDB();
+  const locais = await getAllRecords<Evento>(db, 'eventos');
+
+  // Deduplica por ID: pendentes locais sobrescrevem se houver conflito
+  const merged = new Map<string, Evento>();
+  for (const e of apiEventos) merged.set(e.id, e);
+  for (const e of locais) merged.set(e.id, e);
+
+  const motoristaEventos = Array.from(merged.values())
+    .filter(e => e.motoristaId === motoristaId && !e.removido)
     .sort((a, b) => b.timestamp - a.timestamp);
 
   if (motoristaEventos.length === 0) return 'ENTRADA';
