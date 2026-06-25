@@ -160,8 +160,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     } catch (err: any) {
       // Exibe o erro da API para o usuário
       setMotError(err.message || 'Erro ao salvar motorista.');
-      // Não recarrega os dados em caso de erro
-      setMotError('Erro ao salvar motorista no banco.');
     }
   }
 
@@ -172,7 +170,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         carregarTodosDados();
       } catch (err: any) {
         alert(err.message || 'Erro ao excluir motorista.');
-        alert('Erro ao excluir motorista.');
       }
     }
   }
@@ -225,7 +222,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       carregarTodosDados();
     } catch (err: any) {
       setVeiError(err.message || 'Erro ao salvar veículo.');
-      setVeiError('Erro ao salvar veículo no banco.');
     }
   }
 
@@ -236,7 +232,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         carregarTodosDados();
       } catch (err: any) {
         alert(err.message || 'Erro ao excluir veículo.');
-        alert('Erro ao excluir veículo.');
       }
     }
   }

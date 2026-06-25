@@ -71,7 +71,6 @@ export default function SetupDevice({ onSetupComplete }: SetupDeviceProps) {
       setShowAddForm(false);
     } catch (err: any) {
       setErrorMessage(err.message || 'Erro ao salvar o veículo.');
-      setErrorMessage('Erro ao salvar o veículo no banco de dados.');
     }
   }
 
