@@ -1,0 +1,88 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Status {
+  ATIVO
+  INATIVO
+}
+
+enum EventoTipo {
+  ENTRADA
+  SAIDA
+}
+
+enum EventoOrigem {
+  AUTOMATICO
+  MANUAL
+}
+
+model Motorista {
+  id        String   @id @default(uuid())
+  matricula String   @unique
+  nome      String
+  pinHash   String
+  status    Status   @default(ATIVO)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  eventos Evento[]
+
+  @@map("motoristas")
+}
+
+model Veiculo {
+  id        String   @id @default(uuid())
+  prefixo   String   @unique
+  placa     String   @unique
+  status    Status   @default(ATIVO)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  eventos Evento[]
+
+  @@map("veiculos")
+}
+
+model Evento {
+  id                 String       @id
+  motoristaId        String
+  matriculaSnapshot  String
+  nomeSnapshot       String
+  veiculoId          String
+  prefixoSnapshot    String
+  placaSnapshot      String
+  tipo               EventoTipo
+  dataHoraDispositivo DateTime
+  dataHoraServidor   DateTime     @default(now())
+  origem             EventoOrigem
+  removido           Boolean      @default(false)
+  createdAt          DateTime     @default(now())
+
+  motorista Motorista @relation(fields: [motoristaId], references: [id])
+  veiculo   Veiculo   @relation(fields: [veiculoId], references: [id])
+  logs      LogAuditoria[]
+
+  @@map("eventos")
+}
+
+model LogAuditoria {
+  id            String   @id @default(uuid())
+  eventoId      String
+  acao          String
+  usuario       String
+  valorAntigo   Json?
+  valorNovo     Json?
+  justificativa String
+  dataHora      DateTime @default(now())
+
+  evento Evento @relation(fields: [eventoId], references: [id])
+
+  @@map("logs_auditoria")
+}

@@ -1,0 +1,31 @@
+import { Injectable, ConflictException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { CreateVeiculoDto } from './dto/create-veiculo.dto';
+
+@Injectable()
+export class VeiculosService {
+  constructor(private prisma: PrismaService) {}
+
+  async create(dto: CreateVeiculoDto) {
+    const prefixo = dto.prefixo.toUpperCase();
+    const placa = dto.placa.toUpperCase();
+
+    const existe = await this.prisma.veiculo.findFirst({
+      where: { OR: [{ prefixo }, { placa }] },
+    });
+    if (existe) {
+      throw new ConflictException('Prefixo ou placa já cadastrados.');
+    }
+
+    return this.prisma.veiculo.create({
+      data: { prefixo, placa },
+    });
+  }
+
+  async findAll() {
+    return this.prisma.veiculo.findMany({
+      where: { status: 'ATIVO' },
+      orderBy: { prefixo: 'asc' },
+    });
+  }
+}

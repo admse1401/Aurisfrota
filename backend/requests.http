@@ -1,0 +1,70 @@
+### ==============================
+### Auris Frota — API Requests
+### ==============================
+
+@base = http://localhost:3333
+
+### --- MOTORISTAS ---
+
+### Criar motorista
+POST {{base}}/motoristas
+Content-Type: application/json
+
+{
+  "matricula": "1010",
+  "nome": "Carlos Silva",
+  "pin": "1234"
+}
+
+### Listar motoristas ativos
+GET {{base}}/motoristas
+
+### Buscar por matrícula
+GET {{base}}/motoristas/1010
+
+### --- VEÍCULOS ---
+
+### Criar veículo
+POST {{base}}/veiculos
+Content-Type: application/json
+
+{
+  "prefixo": "F-100",
+  "placa": "ABC-1234"
+}
+
+### Listar veículos ativos
+GET {{base}}/veiculos
+
+### --- EVENTOS (SYNC) ---
+
+### Sincronizar lote de eventos (idempotente)
+POST {{base}}/eventos/sync
+Content-Type: application/json
+
+{
+  "eventos": [
+    {
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "motoristaId": "<UUID_DO_MOTORISTA>",
+      "matriculaSnapshot": "1010",
+      "nomeSnapshot": "Carlos Silva",
+      "veiculoId": "<UUID_DO_VEICULO>",
+      "prefixoSnapshot": "F-100",
+      "placaSnapshot": "ABC-1234",
+      "tipo": "ENTRADA",
+      "dataHoraDispositivo": "2026-06-25T07:05:00.000Z",
+      "origem": "AUTOMATICO",
+      "removido": false
+    }
+  ]
+}
+
+### Listar eventos (fonte da verdade)
+GET {{base}}/eventos
+
+### Filtrar por matrícula e período
+GET {{base}}/eventos?matricula=1010&inicio=2026-06-01&fim=2026-06-30
+
+### Filtrar por prefixo do veículo
+GET {{base}}/eventos?prefixo=F-100
