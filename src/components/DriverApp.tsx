@@ -12,9 +12,10 @@ import { Motorista, Veiculo, EventoTipo } from '../types';
 interface DriverAppProps {
   veiculoVinculado: Veiculo;
   onAdminToggle: () => void;
+  onEventoRegistrado?: () => void;
 }
 
-export default function DriverApp({ veiculoVinculado, onAdminToggle }: DriverAppProps) {
+export default function DriverApp({ veiculoVinculado, onAdminToggle, onEventoRegistrado }: DriverAppProps) {
   // Estados de identificação
   const [matricula, setMatricula] = useState('');
   const [pin, setPin] = useState('');
@@ -133,6 +134,9 @@ export default function DriverApp({ veiculoVinculado, onAdminToggle }: DriverApp
       setPin('');
       setFocusedField('matricula');
 
+      // Dispara sync imediato
+      onEventoRegistrado?.();
+
       // Auto-logout em 4 segundos para o próximo motorista usar
       if (autoLogoutTimer.current) clearTimeout(autoLogoutTimer.current);
       autoLogoutTimer.current = setTimeout(() => {
@@ -140,7 +144,7 @@ export default function DriverApp({ veiculoVinculado, onAdminToggle }: DriverApp
       }, 4000);
 
     } catch (err) {
-      setErrorMsg('Falha ao gravar o evento de ponto no IndexedDB.');
+      setErrorMsg('Falha ao gravar o evento.');
     }
   }
 
