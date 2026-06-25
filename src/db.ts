@@ -308,8 +308,25 @@ export async function deleteMotorista(id: string): Promise<void> {
 
 // Veículos
 export async function getVeiculos(): Promise<Veiculo[]> {
-  const db = await openDB();
-  return getAllRecords<Veiculo>(db, 'veiculos');
+  try {
+    // Tenta buscar da API primeiro
+    const veiculosApi = await api.get('/veiculos');
+    // Se sucesso, sincroniza com o IndexedDB
+    const db = await openDB();
+    const tx = db.transaction('veiculos', 'readwrite');
+    const store = tx.objectStore('veiculos');
+    await new Promise<void>((resolve) => {
+      store.clear().onsuccess = () => resolve();
+    });
+    for (const v of veiculosApi) {
+      await store.put(v);
+    }
+    return veiculosApi;
+  } catch (error) {
+    console.warn('API de veículos offline, usando dados locais.');
+    const db = await openDB();
+    return getAllRecords<Veiculo>(db, 'veiculos');
+  }
 }
 
 export async function getVeiculoById(id: string): Promise<Veiculo | null> {
@@ -325,7 +342,7 @@ export async function saveVeiculo(veiculo: Veiculo): Promise<void> {
   try {
     await api.post('/veiculos', veiculo);
   } catch (error) {
-    console.warn('API offline. Veículo salvo localmente.');
+    console.warn('API offline. Veículo salvo localmente, pendente de sync manual futuro.');
   }
 }
 
@@ -337,7 +354,12 @@ export async function deleteVeiculo(id: string): Promise<void> {
     await resetDeviceSetup();
   }
   await deleteRecord(db, 'veiculos', id);
-  // Adicionar chamada à API para exclusão no backend
+  // Tenta deletar na API
+  try {
+    await api.delete(`/veiculos/${id}`);
+  } catch (error) {
+    console.warn('API offline. Exclusão do veículo pendente de sync.');
+  }
 }
 
 // Eventos
@@ -511,13 +533,17 @@ export async function sincronizarEventosPendentes(): Promise<number> {
     return 0;
   }
 
+  const motoristas = await getAllRecords<Motorista>(db, 'motoristas');
+  const veiculos = await getAllRecords<Veiculo>(db, 'veiculos');
+
   // Mapeia os eventos locais para o formato DTO da API
   const payload = pendentes.map(p => ({
     id: p.id,
     motoristaId: p.motoristaId,
-    matriculaSnapshot: todosEventos.find(m => m.motoristaId === p.motoristaId)?.nomeMotorista.split(' ')[0] || 'N/A', // Exemplo
+    matriculaSnapshot: motoristas.find(m => m.id === p.motoristaId)?.matricula || 'N/A',
     nomeSnapshot: p.nomeMotorista,
-    veiculoId: 'vei-1', // Placeholder, idealmente o ID do veículo estaria no evento
+    // Encontra o ID do veículo correspondente à frota/placa do evento
+    veiculoId: veiculos.find(v => v.frota === p.frota)?.id || 'veiculo-nao-encontrado',
     prefixoSnapshot: p.frota,
     placaSnapshot: p.placa,
     tipo: p.tipo,
@@ -526,7 +552,14 @@ export async function sincronizarEventosPendentes(): Promise<number> {
     removido: p.removido,
   }));
 
-  const response = await api.syncEventos(payload);
+  // Filtra eventos que não conseguiram encontrar um veiculoId válido
+  const payloadValido = payload.filter(p => p.veiculoId !== 'veiculo-nao-encontrado');
+  if (payloadValido.length === 0) {
+    console.warn('Nenhum evento pendente com veículo correspondente para sincronizar.');
+    return 0;
+  }
+
+  const response = await api.syncEventos(payloadValido);
 
   // Atualiza o status local dos eventos que foram recebidos pela API
   for (const res of response) {

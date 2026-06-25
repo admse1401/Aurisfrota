@@ -140,7 +140,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     }
 
     // Verificar matrícula duplicada
-    const duplicado = motoristas.some(m => m.matricula === motMatricula && (!editingMotorista || m.id !== editingMotorista.id));
+    const duplicado = motoristas.some((m: Motorista) => m.matricula === motMatricula && (!editingMotorista || m.id !== editingMotorista.id));
     if (duplicado) {
       setMotError('Esta matrícula já está cadastrada para outro motorista.');
       return;
@@ -203,7 +203,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     }
 
     // Verificar duplicidade
-    const duplicado = veiculos.some(v => (v.frota === frotaT || v.placa === placaT) && (!editingVeiculo || v.id !== editingVeiculo.id));
+    const duplicado = veiculos.some((v: Veiculo) => (v.frota === frotaT || v.placa === placaT) && (!editingVeiculo || v.id !== editingVeiculo.id));
     if (duplicado) {
       setVeiError('Esta frota ou placa já existe.');
       return;
@@ -274,8 +274,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     }
 
     // Preencher informações do motorista e veículo se tiver mudado no select
-    const motoristaCompleto = motoristas.find(m => m.id === editingEvento.motoristaId);
-    const veiculoCompleto = veiculos.find(v => v.frota === editingEvento.frota);
+    const motoristaCompleto = motoristas.find((m: Motorista) => m.id === editingEvento.motoristaId);
+    const veiculoCompleto = veiculos.find((v: Veiculo) => v.frota === editingEvento.frota);
 
     const eventoFinal: Evento = {
       id: editingEvento.id || '',
@@ -337,7 +337,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   }
 
   // --- FILTRAGEM DE EVENTOS ---
-  const eventosFiltrados = eventos.filter(evt => {
+  const eventosFiltrados = eventos.filter((evt: Evento) => {
     // Filtro motorista
     if (filtroMotorista && evt.motoristaId !== filtroMotorista) return false;
     // Filtro veículo (frota)
@@ -380,7 +380,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
     // Agrupamos eventos por motorista para fazer o pareamento correto (cronológico)
     const porMotorista: { [motoristaId: string]: Evento[] } = {};
-    eventosFIP.forEach(evt => {
+    eventosFIP.forEach((evt: Evento) => {
       if (!porMotorista[evt.motoristaId]) porMotorista[evt.motoristaId] = [];
       porMotorista[evt.motoristaId].push(evt);
     });
@@ -390,7 +390,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       const lista = porMotorista[motId].sort((a, b) => a.timestamp - b.timestamp);
       let i = 0;
 
-      const mInfo = motoristas.find(m => m.id === motId);
+      const mInfo = motoristas.find((m: Motorista) => m.id === motId);
       const mNome = mInfo ? mInfo.nome : (lista[0]?.nomeMotorista || 'Desconhecido');
       const mMatricula = mInfo ? mInfo.matricula : 'S/M';
 
@@ -478,7 +478,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   function exportarCSV() {
     const headers = ['Matrícula', 'Nome do Motorista', 'Veículo', 'Entrada Registrada', 'Saída Registrada', 'Duração (Minutos)', 'Horas Trabalhadas', 'Informações de KM'];
     
-    const rows = dadosRelatorio.pares.map(p => {
+    const rows = dadosRelatorio.pares.map((p: ParFIP) => {
       const hrs = Math.floor(p.minutosTrabalhados / 60);
       const mins = p.minutosTrabalhados % 60;
       const hrsFormatadas = p.minutosTrabalhados > 0 ? `${hrs}h ${mins}m` : 'N/A';
@@ -494,7 +494,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       ];
     });
 
-    const csvContent = "\uFEFF" + [headers.join(";"), ...rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(";"))].join("\r\n");
+    const csvContent = "\uFEFF" + [headers.join(";"), ...rows.map((r: any[]) => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(";"))].join("\r\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -507,7 +507,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
   // Exportar para XLSX nativo usando SheetJS
   function exportarXLSX() {
-    const rowsParaSheet = dadosRelatorio.pares.map(p => {
+    const rowsParaSheet = dadosRelatorio.pares.map((p: ParFIP) => {
       const hrs = Math.floor(p.minutosTrabalhados / 60);
       const mins = p.minutosTrabalhados % 60;
       const hrsFormatadas = p.minutosTrabalhados > 0 ? `${hrs}h ${mins}m` : '0h 0m';
@@ -746,7 +746,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       className="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-slate-800 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
                     >
                       <option value="">Todos</option>
-                      {motoristas.map(m => (
+                      {motoristas.map((m: Motorista) => (
                         <option key={m.id} value={m.id}>{m.nome} ({m.matricula})</option>
                       ))}
                     </select>
@@ -759,7 +759,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       className="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-slate-800 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
                     >
                       <option value="">Todos</option>
-                      {veiculos.map(v => (
+                      {veiculos.map((v: Veiculo) => (
                         <option key={v.id} value={v.frota}>{v.frota}</option>
                       ))}
                     </select>
@@ -818,7 +818,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                               Nenhum evento registrado encontrado com os filtros selecionados.
                             </td>
                           </tr>
-                        ) : (
+                        ) : ( eventosFiltrados &&
                           eventosFiltrados.map((evt) => (
                             <tr 
                               key={evt.id} 
@@ -944,7 +944,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       className="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-slate-800 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
                     >
                       <option value="">Todos</option>
-                      {motoristas.map(m => (
+                      {motoristas.map((m: Motorista) => (
                         <option key={m.id} value={m.id}>{m.nome} ({m.matricula})</option>
                       ))}
                     </select>
@@ -1011,7 +1011,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                               Nenhuma jornada registrada com os critérios selecionados para o modelo FIP.
                             </td>
                           </tr>
-                        ) : (
+                        ) : ( dadosRelatorio.pares &&
                           dadosRelatorio.pares.map((p) => {
                             const hrs = Math.floor(p.minutosTrabalhados / 60);
                             const mins = p.minutosTrabalhados % 60;
@@ -1144,7 +1144,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {motoristas.map(m => (
+                      {motoristas.map((m: Motorista) => (
                         <tr key={m.id} className="hover:bg-slate-50 transition-colors">
                           <td className="p-4 font-mono font-bold text-slate-900 text-sm">{m.matricula}</td>
                           <td className="p-4 font-bold text-slate-800">{m.nome}</td>
@@ -1264,7 +1264,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {veiculos.map(v => (
+                      {veiculos.map((v: Veiculo) => (
                         <tr key={v.id} className="hover:bg-slate-50 transition-colors">
                           <td className="p-4 font-bold text-slate-800 text-sm">{v.frota}</td>
                           <td className="p-4 font-mono text-slate-600">{v.placa}</td>
@@ -1322,7 +1322,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                               Nenhum log de auditoria registrado no sistema ainda.
                             </td>
                           </tr>
-                        ) : (
+                        ) : ( logs &&
                           logs.map((lg) => (
                             <tr key={lg.id} className="hover:bg-slate-50 transition-colors">
                               <td className="p-4 font-mono text-slate-600 whitespace-nowrap">{lg.dataHora}</td>
@@ -1418,7 +1418,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                         disabled={!!editingEvento.id} // Não altera motorista de ponto existente
                         className="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-slate-800 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
                       >
-                        {motoristas.map(m => (
+                        {motoristas.map((m: Motorista) => (
                           <option key={m.id} value={m.id}>{m.nome} ({m.matricula})</option>
                         ))}
                       </select>
@@ -1431,7 +1431,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                         onChange={(e) => setEditingEvento({ ...editingEvento, frota: e.target.value })}
                         className="w-full bg-white border border-slate-300 rounded-lg py-2 px-3 text-slate-800 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
                       >
-                        {veiculos.map(v => (
+                        {veiculos.map((v: Veiculo) => (
                           <option key={v.id} value={v.frota}>{v.frota}</option>
                         ))}
                       </select>
